@@ -1,10 +1,8 @@
 ---
 toc: false
+title: Performance du modèle
+theme: dashboard
 ---
-
-```js
-const filename = "https://minio.lab.sspcloud.fr/projet-budget-famille/data/output-predictions/annotations_export_2025-05-27_d88214d2bd2341ca876401712bdae4c5.parquet"
-```
 
 ```js
 const thresholdIC = view(
@@ -16,16 +14,6 @@ const thresholdIC = view(
 const thresholdBudget = view(
   Inputs.range([0, 100000], {value: 50, step: 1, transform: Math.log, label: "Budget"})
 )
-```
-
-
-```js
-const nbre_lignes_eliminees = db.queryRow(`
-FROM read_parquet('${filename}')
-SELECT
-    COUNT(*) FILTER (WHERE confidence_0 <= 0.6) AS n_low_confidence,
-    COUNT(*) FILTER (WHERE total_budget > 50 AND total_budget IS NOT NULL) AS n_budget_big
-`)
 ```
 
 ```js
@@ -47,61 +35,124 @@ Plot.plot({
 })
 ```
 
-```js
-const annotations_filter = db.query(query_selected_from_thresholds)
-const annotations = db.query(query_whole_data)
-const annotations_eliminated = db.query(query_unselected_from_thresholds)
-```
-
 
 ```js
-const creation_coicop_level = `
-coicop_level1 || '.' || split_part(code, '.', 2) AS coicop_level2,
-coicop_level2 || '.' || split_part(code, '.', 3) AS coicop_level3,
-coicop_level3 || '.' || split_part(code, '.', 4) AS coicop_level4
-`
-```
-
-```js
-const query_whole_data = `
-FROM read_parquet('${filename}')
-SELECT *,
-    split_part(code, '.', 1) AS coicop_level1,
-    ${creation_coicop_level}
-`
-```
-
-```js
-const query_data_with_budget = `
-${query_whole_data}
-WHERE total_budget NOT NULL
-`
+Plot.plot({
+  x: {label: "Nombre de lignes"},
+  y: {domain: ["Total"]},
+  color: {
+    legend: true,
+    domain: [
+      "Prédiction acceptée",
+      "Prédiction refusée par les deux critères",
+      `Prédiction refusée car supérieur au critère de budget (€>${thresholdBudget})`,
+      `Prédiction refusée exclusivement par le score de confiance (IC<${thresholdIC})`,
+      "Valeur manquante pour le budget (données ignorées)"
+    ],
+    range: ["#0cf232", "#7e0391", "#91031c", "#030891" , "#424141"]
+  },
+  marks: [
+    Plot.barX(segments_exclusion, {
+      x: "x",
+      y: () => "Total",
+      fill: "label",
+      tip: true,
+      title: d => `${d.label}: ${d.x}`
+    })
+  ]
+})
 ```
 
 ```js
-const query_selected_from_thresholds = `
-${query_data_with_budget}
-AND confidence_0 > ${thresholdIC}
-AND total_budget < ${thresholdBudget}
-`
+const thresholds = 50
+const x = "confidence_0"
 ```
 
 ```js
-const query_unselected_from_thresholds = `
-${query_data_with_budget}
-AND confidence_0 <= ${thresholdIC}
-OR total_budget >= ${thresholdBudget}
-`
+Plot.plot({
+  title: "toto",
+  width: 400,
+  height: 400 * 0.8,
+  marginLeft: 50,
+  y: {grid: true, label: "Fréquence"},
+  x: {grid: false, label: "Indice de confiance"},
+  color: {
+    label: ["Résultat :"],
+    legend: true,
+    domain: ["Mauvaise prédiction", "Bonne prédiction"],
+    range: ["#b2182b", "#2166ac"]
+  },
+  marks: [
+    Plot.rectY(
+      annotations,
+      Plot.binX(
+        {y: "sum"},
+        {
+          x: {thresholds: thresholds, value: x, domain: [0, 1]},
+          y: d => d.prediction_ok === 1 ? 1 : -1,
+          fill: d => d.prediction_ok === 1 ? "Bonne prédiction" : "Mauvaise prédiction",
+          insetLeft: 2,
+          tip: {
+            format: {
+              y: d => `${Math.abs(d)}`,
+              x: d => `${d}`,
+              fill: d => d > 0 ? "Bonne prédiction" : "Mauvaise prédiction"
+            }
+          }
+        }
+      )
+    ),
+    Plot.ruleX([thresholdIC], {stroke: "blue"})
+  ]
+})
 ```
 
+<!--------
+function histogramIC(data, {width, title, IC, thresholds=50, x, y} = {}) {
+  return Plot.plot({
+    title: title,
+    width,
+    height: width * 0.8,
+    marginLeft: 50,
+    y: {grid: true, label: "Fréquence"},
+    x: {grid: false, label: "Indice de confiance"},
+    color: {
+      label: ["Résultat :"],
+      legend: true,
+      domain: ["Mauvaise prédiction", "Bonne prédiction"],
+      range: ["#b2182b","#2166ac"],
+      },
+    marks: [
+      Plot.rectY(data,
+        Plot.binX(
+          {y: "sum"},
+          {x: {thresholds: thresholds, value: x, domain: [0, 1]},
+           y: (d) => d[y] === 1 ? 1 : -1,
+           fill: (d) => d[y] === 1 ? "Bonne prédiction" : "Mauvaise prédiction" ,
+           insetLeft: 2,
+           tip: {
+            format: {
+              y: (d) => `${d < 0 ? d * -1 : d}`,
+              x: (d) => `${d}`,
+              fill: (d) => `${d ? "Bonne prédiction" : "Mauvaise prédiction"}`,
+            }
+            },
+        })),
+      Plot.ruleX([IC], {stroke: "white"}),
+      // Plot.text(
+      //   [` ← Liasses envoyée en reprise gestionnaire`],
+      //   {x: threshold - 0.18 , y: 2600, anchor: "middle"}
+      // ),
+      // Plot.text(
+      //   [`Liasses codées automatiquement →`],
+      //   {x: threshold + 0.15, y: 2600, anchor: "middle"}
+      // ),
+      ]
+  })
+}
+---------->
 
-```js
-const db = DuckDBClient.of({})
-```
 
-```js
-import * as Inputs from "npm:@observablehq/inputs";
-```
 
 
 
