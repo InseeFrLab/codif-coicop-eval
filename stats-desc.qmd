@@ -1,0 +1,81 @@
+---
+title: Statistiques descriptives sur le corpus
+output-file: index.html
+echo: false
+---
+
+# Les mots
+
+```{ojs}
+location = "https://minio.lab.sspcloud.fr/projet-budget-famille/data/stats-desc-before-training/ddc_vs_annotations.parquet"
+
+db = DuckDBClient.of({})
+```
+
+```{ojs}
+query_whole_data = `
+WITH ranked AS (
+  SELECT *,
+         ROW_NUMBER() OVER (ORDER BY relative_risk ASC) AS relative_risk_rank,
+         COUNT(*) OVER () AS total_count
+  FROM read_parquet('${location}')
+),
+middle_sample AS (
+  SELECT *
+  FROM ranked
+  WHERE relative_risk_rank > 500
+    AND relative_risk_rank <= total_count - 500
+  USING SAMPLE 500
+),
+final AS (
+  SELECT * FROM ranked WHERE relative_risk_rank <= 500
+  UNION ALL
+  SELECT * FROM ranked WHERE relative_risk_rank > total_count - 500
+  UNION ALL
+  SELECT * FROM middle_sample
+)
+SELECT *
+FROM final
+`
+```
+
+
+```{ojs}
+ddc_vs_coicop = db.query(query_whole_data)
+```
+
+
+```{ojs}
+Plot.plot({
+  grid: true,
+  height: 500,
+  marginLeft: 100,
+  x: {
+    label: "Relative Risk",
+    type: "log" // optional: logarithmic scale for better spacing
+  },
+  y: {
+    label: null,
+    axis: null
+  },
+  marks: [
+    Plot.dot(ddc_vs_coicop, {
+      y: "relative_risk_rank",
+      x: "relative_risk",
+      tip: true,
+      title: d => `${d.mot}: RR=${d.relative_risk.toFixed(2)}, Freq=${d.frequence_annot}`
+    })
+  ]
+})
+```
+
+
+```{ojs}
+viewof text = Inputs.text({value: "nutella"})
+```
+
+```{ojs}
+Inputs.table(
+    db.query(`FROM read_parquet('${location}') SELECT * WHERE mot = '${text}'`)
+)
+```
