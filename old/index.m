@@ -4,19 +4,19 @@ title: Performance du modèle
 theme: dashboard
 ---
 
-```js
-const thresholdIC = view(
+```{ojs}
+thresholdIC = view(
   Inputs.range([0, 1], {value: 0.6, step: 0.01, label: "Indice de confiance"})
 )
 ```
 
-```js
-const thresholdBudget = view(
+```{ojs}
+thresholdBudget = view(
   Inputs.range([0, 100000], {value: 50, step: 1, transform: Math.log, label: "Budget"})
 )
 ```
 
-```js
+```{ojs}
 Plot.plot({
   inset: 8,
   grid: true,
@@ -36,7 +36,7 @@ Plot.plot({
 ```
 
 
-```js
+```{ojs}
 Plot.plot({
   x: {label: "Nombre de lignes"},
   y: {domain: ["Total"]},
@@ -63,12 +63,12 @@ Plot.plot({
 })
 ```
 
-```js
-const thresholds = 50
-const x = "confidence_0"
+```{ojs}
+thresholds = 50
+x = "confidence_0"
 ```
 
-```js
+```{ojs}
 Plot.plot({
   title: "toto",
   width: 400,

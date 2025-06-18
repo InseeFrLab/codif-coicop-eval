@@ -1,0 +1,56 @@
+---
+title: "Performance des modèles"
+format: typst
+---
+
+
+```{python}
+from src.config.duckdb import create_connection
+con = create_connection()
+```
+
+```{python}
+FILENAME = "annotations_export_2025-06-18_a20fb69ccf494167b816379ca529a12a.parquet"
+path = f"projet-budget-famille/data/output-predictions/{FILENAME}"
+
+predictions = con.query(f"""
+FROM read_parquet('s3://{path}')
+SELECT product, code, coicop, COLUMNS('prediction_\d+'), 
+COLUMNS('confidence_\d+')
+""").to_df()
+```
+
+
+
+```{python}
+def match_on_dot_level(df, col1, col2, n_points=2):
+    """
+    Compare deux colonnes de type string dans un DataFrame, en gardant
+    uniquement les `n_points` premiers segments séparés par un point (.),
+    puis calcule la proportion de lignes identiques.
+
+    Args:
+        df (pd.DataFrame): Le DataFrame contenant les colonnes à comparer.
+        col1 (str): Nom de la première colonne.
+        col2 (str): Nom de la seconde colonne.
+        n_points (int): Nombre de segments à garder avant comparaison.
+
+    Returns:
+        float: Proportion d’égalité ligne à ligne après découpe.
+    """
+    left = df[col1].str.split('.', n=n_points).str[:n_points].str.join('.')
+    right = df[col2].str.split('.', n=n_points).str[:n_points].str.join('.')
+    return float(
+        (left == right).mean()
+    )
+
+```
+
+
+
+```{python}
+perf_whole_annotations = {
+    f"whole_annotations_level{n}": match_on_dot_level(predictions, "prediction_0", "code", n_points=n)
+    for n in range(1, 6)
+}
+```

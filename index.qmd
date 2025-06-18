@@ -1,31 +1,128 @@
-```js
-import * as Inputs from "npm:@observablehq/inputs";
-import {DuckDBClient} from "npm:@observablehq/duckdb";
+---
+title: "titre"
+---
+
+
+```{ojs}
+viewof thresholdIC = Inputs.range([0, 1], {value: 0.6, step: 0.01, label: "Indice de confiance"})
 ```
 
-```js
-const db = DuckDBClient.of({})
+```{ojs}
+viewof thresholdBudget = Inputs.range([0, 100000], {value: 50, step: 1, transform: Math.log, label: "Budget"})
 ```
 
-<!-----------------
-SQL queries
------------------->
+```{ojs}
+Plot.plot({
+  inset: 8,
+  grid: true,
+  color: {
+    legend: true,
+  },
+  x: {
+    type: "log"
+  },
+  marks: [
+    Plot.dot(annotations_eliminated, {x: "total_budget", y: "confidence_0", stroke: "black", tip: true}),
+    Plot.dot(annotations_filter, {x: "total_budget", y: "confidence_0", stroke: "coicop_level1", tip: true, FillOpacity: 0.2}),
+    Plot.ruleY([thresholdIC], {stroke: "red"}),
+    Plot.ruleX([thresholdBudget], {stroke: "blue"}),
+  ]
+})
+```
 
-```js
-const filename = "https://minio.lab.sspcloud.fr/projet-budget-famille/data/output-predictions/annotations_export_2025-05-27_d88214d2bd2341ca876401712bdae4c5.parquet"
+```{ojs}
+Plot.plot({
+  x: {label: "Nombre de lignes"},
+  y: {domain: ["Total"]},
+  color: {
+    legend: true,
+    domain: [
+      "Prédiction acceptée",
+      "Prédiction refusée par les deux critères",
+      `Prédiction refusée car supérieur au critère de budget (€>${thresholdBudget})`,
+      `Prédiction refusée exclusivement par le score de confiance (IC<${thresholdIC})`,
+      "Valeur manquante pour le budget (données ignorées)"
+    ],
+    range: ["#0cf232", "#7e0391", "#91031c", "#030891" , "#424141"]
+  },
+  marks: [
+    Plot.barX(segments_exclusion, {
+      x: "x",
+      y: () => "Total",
+      fill: "label",
+      tip: true,
+      title: d => `${d.label}: ${d.x}`
+    })
+  ]
+})
 ```
 
 
-```js
-const creation_coicop_level = `
+```{ojs}
+thresholds = 50
+x = "confidence_0"
+```
+
+```{ojs}
+Plot.plot({
+  title: "toto",
+  width: 400,
+  height: 400 * 0.8,
+  marginLeft: 50,
+  y: {grid: true, label: "Fréquence"},
+  x: {grid: false, label: "Indice de confiance"},
+  color: {
+    label: ["Résultat :"],
+    legend: true,
+    domain: ["Mauvaise prédiction", "Bonne prédiction"],
+    range: ["#b2182b", "#2166ac"]
+  },
+  marks: [
+    Plot.rectY(
+      annotations,
+      Plot.binX(
+        {y: "sum"},
+        {
+          x: {thresholds: thresholds, value: x, domain: [0, 1]},
+          y: d => d.prediction_ok === 1 ? 1 : -1,
+          fill: d => d.prediction_ok === 1 ? "Bonne prédiction" : "Mauvaise prédiction",
+          insetLeft: 2,
+          tip: {
+            format: {
+              y: d => `${Math.abs(d)}`,
+              x: d => `${d}`,
+              fill: d => d > 0 ? "Bonne prédiction" : "Mauvaise prédiction"
+            }
+          }
+        }
+      )
+    ),
+    Plot.ruleX([thresholdIC], {stroke: "blue"})
+  ]
+})
+```
+
+<!-----
+------>
+
+```{ojs}
+db = DuckDBClient.of({})
+```
+
+```{ojs}
+filename = "https://minio.lab.sspcloud.fr/projet-budget-famille/data/output-predictions/annotations_export_2025-06-18_a20fb69ccf494167b816379ca529a12a.parquet"
+```
+
+```{ojs}
+creation_coicop_level = `
 coicop_level1 || '.' || split_part(code, '.', 2) AS coicop_level2,
 coicop_level2 || '.' || split_part(code, '.', 3) AS coicop_level3,
 coicop_level3 || '.' || split_part(code, '.', 4) AS coicop_level4
 `
 ```
 
-```js
-const query_whole_data = `
+```{ojs}
+query_whole_data = `
 FROM read_parquet('${filename}')
 SELECT *,
   CASE
@@ -37,23 +134,23 @@ SELECT *,
 `
 ```
 
-```js
-const query_data_with_budget = `
+```{ojs}
+query_data_with_budget = `
 ${query_whole_data}
 WHERE total_budget NOT NULL
 `
 ```
 
-```js
-const query_selected_from_thresholds = `
+```{ojs}
+query_selected_from_thresholds = `
 ${query_data_with_budget}
 AND confidence_0 > ${thresholdIC}
 AND total_budget < ${thresholdBudget}
 `
 ```
 
-```js
-const query_unselected_from_thresholds = `
+```{ojs}
+query_unselected_from_thresholds = `
 ${query_data_with_budget}
 AND confidence_0 <= ${thresholdIC}
 OR total_budget >= ${thresholdBudget}
@@ -61,8 +158,8 @@ OR total_budget >= ${thresholdBudget}
 ```
 
 
-```js
-const nbre_exclusions = db.queryRow(`
+```{ojs}
+nbre_exclusions = db.queryRow(`
 SELECT
     COUNT(*) AS n_total,
 
@@ -94,8 +191,8 @@ FROM read_parquet('${filename}')
 `);
 ```
 
-```js
-const segments_exclusion = [
+```{ojs}
+segments_exclusion = [
   { label: "Prédiction acceptée (vraie ou fausse)", x: nbre_exclusions.n_accepted, group: "accepted" },
   { label: `Prédiction refusée exclusivement par le score de confiance (IC<${thresholdIC})`, x: nbre_exclusions.n_excluded_confidence_only, group: "confidence" },
   { label: `Prédiction refusée car supérieur au critère de budget (€>${thresholdBudget})`, x: nbre_exclusions.n_excluded_budget_only, group: "budget" },
@@ -104,8 +201,8 @@ const segments_exclusion = [
 ];
 ```
 
-```js
-const nbre_lignes_eliminees = db.queryRow(`
+```{ojs}
+nbre_lignes_eliminees = db.queryRow(`
 SELECT
     COUNT(*) AS n_initial,
     COUNT(*) FILTER (WHERE confidence_0 > ${thresholdIC} AND total_budget > ${thresholdBudget} AND total_budget IS NOT NULL) AS n_accepted,
@@ -123,24 +220,24 @@ FROM read_parquet('${filename}')
 Data pour barplot
 -------------------->
 
-```js
-const total = nbre_lignes_eliminees.n_initial;
+```{ojs}
+total = nbre_lignes_eliminees.n_initial;
 
 // === Segments pour budget ===
-const segments_budget = [
+segments_budget = [
   { label: "Accepted", x: nbre_lignes_eliminees.n_accepted, group: "accepted" },
   { label: "Low confidence and budget too low", x: nbre_lignes_eliminees.n_low_confidence, group: "confidence" },
   { label: "Budget too low", x: nbre_lignes_eliminees.n_budget_small, group: "budget_low" },
   { label: "Budget missing", x: nbre_lignes_eliminees.n_budget_missing, group: "budget_missing" }
 ];
 
-const total_budget = segments_budget.reduce((sum, d) => sum + d.x, 0);
-const segmentsFinal_budget = total_budget < total
+total_budget = segments_budget.reduce((sum, d) => sum + d.x, 0);
+segmentsFinal_budget = total_budget < total
   ? [...segments_budget, { label: "Other / Unaccounted", x: total - total_budget, group: "unknown" }]
   : segments_budget;
 
 // === Segments pour confidence ===
-const segments_ic = [
+segments_ic = [
   { label: "Accepted", x: nbre_lignes_eliminees.n_accepted, group: "accepted" },
   { label: "Low confidence", x: nbre_lignes_eliminees.n_low_confidence, group: "confidence_low" },
   { label: "High confidence", x: nbre_lignes_eliminees.n_high_confidence, group: "confidence_high" },
@@ -148,18 +245,15 @@ const segments_ic = [
 
 ];
 
-const total_ic = segments_ic.reduce((sum, d) => sum + d.x, 0);
-const segmentsFinal_ic = total_ic < total
+total_ic = segments_ic.reduce((sum, d) => sum + d.x, 0);
+segmentsFinal_ic = total_ic < total
   ? [...segments_ic, { label: "Other / Unaccounted", x: total - total_ic, group: "unknown" }]
   : segments_ic;
 ```
 
 
-```js
-const annotations_filter = db.query(query_selected_from_thresholds)
-const annotations = db.query(query_whole_data)
-const annotations_eliminated = db.query(query_unselected_from_thresholds)
+```{ojs}
+annotations_filter = db.query(query_selected_from_thresholds)
+annotations = db.query(query_whole_data)
+annotations_eliminated = db.query(query_unselected_from_thresholds)
 ```
-
-
-

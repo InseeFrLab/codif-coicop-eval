@@ -8,14 +8,14 @@ toc: false
 
 <!-- Load and transform the data -->
 
-```js
-const launches = FileAttachment("data/launches.csv").csv({typed: true});
+```{ojs}
+launches = FileAttachment("data/launches.csv").csv({typed: true});
 ```
 
 <!-- A shared color scale for consistency, sorted by the number of launches -->
 
-```js
-const color = Plot.scale({
+```{ojs}
+color = Plot.scale({
   color: {
     type: "categorical",
     domain: d3.groupSort(launches, (D) => -D.length, (d) => d.state).filter((d) => d !== "Other"),
@@ -47,7 +47,7 @@ const color = Plot.scale({
 
 <!-- Plot of launch history -->
 
-```js
+```{ojs}
 function launchTimeline(data, {width} = {}) {
   return Plot.plot({
     title: "Launches over the years",
@@ -71,7 +71,7 @@ function launchTimeline(data, {width} = {}) {
 
 <!-- Plot of launch vehicles -->
 
-```js
+```{ojs}
 function vehicleChart(data, {width}) {
   return Plot.plot({
     title: "Popular launch vehicles",

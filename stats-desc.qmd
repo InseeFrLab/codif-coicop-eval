@@ -1,6 +1,5 @@
 ---
 title: Statistiques descriptives sur le corpus
-output-file: index.html
 echo: false
 ---
 

@@ -5,8 +5,10 @@ website:
   title: "explo"
   navbar:
     left:
-      - href: stats-desc.qmd
+      - href: index.qmd
         text: Home
+      - href: stats-desc.qmd
+        text: Stats desc
 
 format:
   html:
