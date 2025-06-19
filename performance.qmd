@@ -1,6 +1,7 @@
 ---
 title: "Performance des modèles"
 format: typst
+echo: false
 ---
 
 
@@ -15,8 +16,11 @@ path = f"projet-budget-famille/data/output-predictions/{FILENAME}"
 
 predictions = con.query(f"""
 FROM read_parquet('s3://{path}')
-SELECT product, code, coicop, COLUMNS('prediction_\d+'), 
-COLUMNS('confidence_\d+')
+SELECT
+    product, code, coicop, method,
+    COLUMNS('prediction_\d+'), 
+    COLUMNS('confidence_\d+'),
+    confidence_0 - confidence_1 AS indice_confiance
 """).to_df()
 ```
 
@@ -53,4 +57,103 @@ perf_whole_annotations = {
     f"whole_annotations_level{n}": match_on_dot_level(predictions, "prediction_0", "code", n_points=n)
     for n in range(1, 6)
 }
+```
+
+```{python}
+perf_whole_annotations = {
+    f"whole_annotations_level{n}": match_on_dot_level(predictions, "prediction_0", "code", n_points=n)
+    for n in range(1, 6)
+}
+```
+
+
+```{python}
+perf_annotations_by_method = {}
+
+for method, subset in predictions.groupby("method"):
+    for n in range(1, 6):
+        key = f"{method}_annotations_level{n}"
+        perf_annotations_by_method[key] = match_on_dot_level(subset, "prediction_0", "code", n_points=n)
+
+```
+
+
+```{python}
+perf_ddc = {
+    "ddc_validation_level1": 0.9597685621344899,
+    "ddc_validation_level2": 0.9497502533018113,
+    "ddc_validation_level3": 0.9347370105053593
+}
+
+```
+
+
+```{python}
+import pandas as pd
+import re
+
+all_dicts = [perf_ddc, perf_whole_annotations, perf_annotations_by_method]
+
+# Liste pour stocker les lignes
+rows = []
+
+# Extraire les infos de chaque dict
+for d in all_dicts:
+    for key, value in d.items():
+        match = re.match(r"(.*)_level(\d+)", key)
+        if match:
+            source = match.group(1)
+            level = f"level{match.group(2)}"
+            rows.append({
+                "source": source,
+                "niveau": level,
+                "perf": value
+            })
+
+# Créer le DataFrame final
+df = pd.DataFrame(rows)
+df = df.sort_values(by=["niveau", "source"]).reset_index(drop=True)
+
+df
+```
+
+
+
+```{python}
+recoding = {
+    "ddc_validation": "Données de validation (DDC)",
+    "whole_annotations": "Données annotées BdF (ensemble)",
+    "Produits issus de l'application (carnets)_annotations": "Données annotées BdF (carnets)",
+    "Produits issus de l'application (tickets)_annotations": "Données annotées BdF (tickets de caisse)",
+    "manual_annotations": "Annotations manuelles (Copain ou LibreOffice)"
+}
+df["source_label"] = df["source"].map(recoding)
+df["complete"] = df["source"].isin(["ddc_validation", "whole_annotations"])
+df["niveau"] = df["niveau"].str.replace("level", "").astype(int)
+df=df.loc[df['niveau']<4]
+```
+
+
+
+```{python}
+from plotnine import *
+
+# Création de la figure
+p = (
+    ggplot(df, aes(x="niveau", y="perf", color="source_label", linetype="complete"))
+    + geom_line()
+    + geom_point() 
+    + scale_linetype_manual(values={False: "dashed", True: "solid"})
+    + labs(
+        title="Performance par niveau et source",
+        x="Niveau",
+        y="Performance",
+        color="Source",
+        linetype="Complétude"
+    )
+    + theme(legend_position="bottom")
+
+)
+
+p
 ```
