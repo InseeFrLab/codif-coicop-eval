@@ -5,11 +5,7 @@ website:
   title: "explo"
   navbar:
     left:
-      - href: index.qmd
-        text: Home
-      - href: stats-desc.qmd
-        text: Stats desc
-      - href: performance.qmd
+      - href: perf.qmd
         text: Performance
 
 format:

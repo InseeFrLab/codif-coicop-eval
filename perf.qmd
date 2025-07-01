@@ -1,0 +1,140 @@
+---
+title: "Performance des modèles"
+format: html
+echo: false
+---
+
+```{r}
+#| output: false
+
+library(duckdb)
+library(glue)
+library(duckplyr)
+library(gt)
+library(gtExtras)
+
+con <- dbConnect(duckdb::duckdb(), dbdir = ":memory:")
+secret <- "CREATE SECRET secret_sspcloud (TYPE S3, URL_STYLE 'path')"
+dbExecute(con, secret)
+```
+
+
+# Introduction
+
+Cette note vise à synthétiser des éléments relatifs à l'évaluation de la qualité du modèle de codification automatique dans la COICOP entraîné à partir des données de caisse de l'IPC. Il s'agit de tirer des conclusions de la première phase de travaux afin d'évaluer la pertinence de la mise en oeuvre d'une stratégie raffinée d'entraînement et d'inférence. 
+
+Pour cela, nous avons adopté l'approche suivante:
+
+* Le modèle est entraîné __exclusivement__ sur les données de caisse selon une approche traditionnelle avec un découpage en échantilllon d'entraînement et de validation. 
+* Le jeu d'annotation, dont la nature sera précisée ultérieurement, est utilisé en inférence pour déduire des qualités d'extrapolation sur les données de caisse
+
+
+# Données utilisées
+
+## Données de caisse
+
+Pour constituer le jeu de données de caisse, nous avons extrait un mois de données de caisse des données de production de l'IPC. Le code ayant permis de constituer celles-ci est sur [gitlab.insee.fr/](https://gitlab.insee.fr/ssplab/extraction-ddc) et les données en question sont stockées sur S3 (`s3://travail/projet-ml-classification-bdf/confidentiel/personnel_sensible/data/raw/sample/ddc.parquet`). 
+
+Ce fichier comporte environ 2.9 millions de produits uniques. Cela fait environ 2.3 millions de données dans l'ensemble d'entraînement contre 600 000 dans l'ensemble de validation. 
+
+```{r}
+stats_coicop_ddc <- data.frame(
+  coicop1 = c("01", "07", "02", "05", "12", "99", "09", "06", "04"),
+  n = c(1451494, 23341, 605709, 308824, 311355, 21008, 135605, 17903, 425)
+)
+
+# Table de correspondance des labels
+labels_coicop <- data.frame(
+  coicop1 = sprintf("%02d", 1:12),
+  label = c(
+    "Produits alimentaires et boissons non alcoolisées",
+    "Boissons alcoolisées et tabac",
+    "Habillement et chaussures",
+    "Logement, eau, gaz, électricité et autres combustibles",
+    "Ameublement, équipement ménager et entretien courant de la maison",
+    "Santé",
+    "Transport",
+    "Communications",
+    "Loisirs et culture",
+    "Éducation",
+    "Hôtellerie, cafés, restauration",
+    "Autres biens et services"
+  )
+)
+
+# Jointure pour ajouter les labels
+stats_coicop_ddc <- stats_coicop_ddc %>% left_join(labels_coicop, by = "coicop1")
+
+
+stats_coicop_ddc <- stats_coicop_ddc %>% mutate(n_temp = n) %>%
+  mutate(p = n/sum(n)) %>%
+  select(coicop1, label, n, p, everything()) %>%
+  arrange(coicop1)
+
+gt(stats_coicop_ddc) %>%
+  gt_plt_bar(n_temp) %>%
+  fmt_percent(columns = p, decimals=1, ) %>%
+  grand_summary_rows(
+    columns = n,
+    fns = list(n ~ sum(.)),
+    fmt = list(
+      ~fmt_number(., suffixing = TRUE)
+    )
+  ) %>%
+  cols_label(
+    coicop1 = "",
+    label = "COICOP",
+    n = "Nombre de produits",
+    p = md("_(Part)_"),
+    n_temp = ""
+  ) %>%
+  tab_style(cell_text(style = "italic"), locations = cells_body(columns = p))
+```
+
+
+## Annotations
+
+Les annotations sont une collection issue de trois sources ([@tbl-annotation-source]).
+
+
+```{r}
+#| output: false
+
+FILENAME <- "annotations_export_2025-06-18_a20fb69ccf494167b816379ca529a12a.parquet"
+path = glue("projet-budget-famille/data/output-predictions/{FILENAME}")
+
+predictions <- read_parquet_duckdb(
+  glue("s3://{path}")
+) %>%
+  select(
+    product,
+    code,
+    coicop,
+    method,
+    matches("^prediction_\\d+"),
+    matches("^confidence_\\d+")
+  ) %>%
+  mutate(indice_confiance = confidence_0 - confidence_1)
+
+sources <- predictions %>%
+  group_by(method) %>%
+  summarise(n = n()) %>%
+  mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
+
+```
+
+
+```{r}
+#| tbl-cap: "Sources du jeu d'annotation"
+#| label: tbl-annotation-source
+
+gt(sources %>% mutate(n_temp = n)) %>%
+  gt_plt_bar(column = n_temp, keep_column = FALSE) %>%
+  cols_label(
+    method = "Source de l'annotation",
+    n = "Nombre de produits",
+    n_temp = ""
+  )
+```
+
+Les tickets de caisse représentent autour de 60% du jeu d'annotation. 
