@@ -9,6 +9,8 @@ website:
         text: Home
       - href: stats-desc.qmd
         text: Stats desc
+      - href: performance.qmd
+        text: Performance
 
 format:
   html:
