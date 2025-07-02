@@ -73,7 +73,8 @@ stats_coicop_ddc <- stats_coicop_ddc %>% mutate(n_temp = n) %>%
 
 gt(stats_coicop_ddc) %>%
   gt_plt_bar(n_temp) %>%
-  fmt_percent(columns = p, decimals=1, ) %>%
+  fmt_number(columns = n, suffixing = TRUE, decimals = 1) %>%
+  fmt_percent(columns = p, decimals=1) %>%
   grand_summary_rows(
     columns = n,
     fns = list(n ~ sum(.)),
@@ -88,7 +89,9 @@ gt(stats_coicop_ddc) %>%
     p = md("_(Part)_"),
     n_temp = ""
   ) %>%
-  tab_style(cell_text(style = "italic"), locations = cells_body(columns = p))
+  tab_style(cell_text(style = "italic"), locations = cells_body(columns = p)) %>%
+  cols_width(label ~ px(200))
+
 ```
 
 
@@ -111,6 +114,7 @@ predictions <- read_parquet_duckdb(
     code,
     coicop,
     method,
+    total_budget,
     matches("^prediction_\\d+"),
     matches("^confidence_\\d+")
   ) %>%
@@ -120,12 +124,12 @@ sources <- predictions %>%
   group_by(method) %>%
   summarise(n = n()) %>%
   mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
-
 ```
 
 
 ```{r}
-#| tbl-cap: "Sources du jeu d'annotation"
+#| tbl-cap: "Sources 
+#| du jeu d'annotation"
 #| label: tbl-annotation-source
 
 gt(sources %>% mutate(n_temp = n)) %>%
@@ -137,4 +141,26 @@ gt(sources %>% mutate(n_temp = n)) %>%
   )
 ```
 
-Les tickets de caisse représentent autour de 60% du jeu d'annotation. 
+Les tickets de caisse représentent autour de 60% du jeu d'annotation. Si on regarde le budget, on perd environ 10% de données (un peu plus de 1000 lignes). 
+
+```{r}
+sources <- predictions %>%
+  group_by(method) %>%
+  tidyr::drop_na(total_budget) %>%
+  summarise(budget = sum(total_budget)) %>%
+  mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
+
+```
+
+
+```{r}
+gt(sources %>% mutate(n_temp = budget)) %>%
+  gt_plt_bar(column = n_temp, keep_column = FALSE) %>%
+  fmt_number(budget, suffixing = TRUE) %>%
+  cols_label(
+    method = "Source de l'annotation",
+    budget = "Budget total",
+    n_temp = ""
+  )
+```
+
