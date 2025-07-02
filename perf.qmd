@@ -128,8 +128,7 @@ sources <- predictions %>%
 
 
 ```{r}
-#| tbl-cap: "Sources 
-#| du jeu d'annotation"
+#| tbl-cap: "Sources du jeu d'annotation"
 #| label: tbl-annotation-source
 
 gt(sources %>% mutate(n_temp = n)) %>%
@@ -148,19 +147,27 @@ sources <- predictions %>%
   group_by(method) %>%
   tidyr::drop_na(total_budget) %>%
   summarise(budget = sum(total_budget)) %>%
+  mutate(p = budget/sum(budget)) %>%
   mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
 
 ```
 
 
 ```{r}
+#| tab-cap: "Budget renseigné dans les annotations"
 gt(sources %>% mutate(n_temp = budget)) %>%
   gt_plt_bar(column = n_temp, keep_column = FALSE) %>%
-  fmt_number(budget, suffixing = TRUE) %>%
+  fmt_currency(
+    budget, suffixing = TRUE,
+    currency = "EUR",
+    incl_space = TRUE
+    ) %>%
+  fmt_percent(p) %>%
   cols_label(
     method = "Source de l'annotation",
     budget = "Budget total",
-    n_temp = ""
+    n_temp = "",
+    p = md("_(%)_")
   )
 ```
 
