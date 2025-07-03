@@ -29,13 +29,15 @@ Pour cela, nous avons adopté l'approche suivante:
 * Le jeu d'annotation, dont la nature sera précisée ultérieurement, est utilisé en inférence pour déduire des qualités d'extrapolation sur les données de caisse
 
 
-# Données utilisées
+# Données utilisées {#sec-data}
+
+Pour pouvoir ultérieurement diagnostiquer les performances de nos modèles sur les différentes métriques métier qui nous intéressent, on va commencer par s'intéresser à nos jeux de données. Les statistiques présentées sur les COICOP reposent sur le premier niveau de la nomenclature: bien que nous essayions de prédire à un niveau bien plus fin, cela nous donne déjà une indication de la représentativité de nos données. 
 
 ## Données de caisse
 
-Pour constituer le jeu de données de caisse, nous avons extrait un mois de données de caisse des données de production de l'IPC. Le code ayant permis de constituer celles-ci est sur [gitlab.insee.fr/](https://gitlab.insee.fr/ssplab/extraction-ddc) et les données en question sont stockées sur S3 (`s3://travail/projet-ml-classification-bdf/confidentiel/personnel_sensible/data/raw/sample/ddc.parquet`). 
+Pour constituer le jeu de données de caisse, nous avons extrait un mois de données de caisse des données de production de l'IPC. Le code ayant permis de constituer celles-ci est sur [{{< fa brands gitlab >}} gitlab.insee.fr/](https://gitlab.insee.fr/ssplab/extraction-ddc) et les données en question sont stockées sur S3 (`s3://travail/projet-ml-classification-bdf/confidentiel/personnel_sensible/data/raw/sample/ddc.parquet`). 
 
-Ce fichier comporte environ 2.9 millions de produits uniques. Cela fait environ 2.3 millions de données dans l'ensemble d'entraînement contre 600 000 dans l'ensemble de validation. 
+Ce fichier comporte environ 2.9 millions de produits uniques. Cela fait environ 2.3 millions de données dans l'ensemble d'entraînement contre 600 000 dans l'ensemble de validation. Si on regarde le champ de ces données, à savoir la répartition entre les COICOP ([@tbl-coicop-train]), on est peu surpris de retrouver majoritairement de l'alimentaire et des boissons (approx 70% des produits).
 
 ```{r}
 stats_coicop_ddc <- data.frame(
@@ -70,6 +72,12 @@ stats_coicop_ddc <- stats_coicop_ddc %>% mutate(n_temp = n) %>%
   mutate(p = n/sum(n)) %>%
   select(coicop1, label, n, p, everything()) %>%
   arrange(coicop1)
+```
+
+
+```{r}
+#| tbl-cap: Répartition des COICOP dans le jeu d'apprentissage (nombre de produits)
+#| label: tbl-coicop-train
 
 gt(stats_coicop_ddc) %>%
   gt_plt_bar(n_temp) %>%
@@ -97,7 +105,7 @@ gt(stats_coicop_ddc) %>%
 
 ## Annotations
 
-Les annotations sont une collection issue de trois sources ([@tbl-annotation-source]).
+Les annotations sont une collection issue de trois sources. Si on regarde le volume de produits, les tickets océrisés dominent ([@tbl-annotation-source]). Néanmoins, on peut également s'intéresser au budget, pour lequel on perd environ 10% de données (un peu plus de 1000 lignes) qui ont des budgets manquants. Si on regarde le budget, cette fois, les produits renseignés par le biais de l'application dominent largement. 
 
 
 ```{r}
@@ -140,7 +148,6 @@ gt(sources %>% mutate(n_temp = n)) %>%
   )
 ```
 
-Les tickets de caisse représentent autour de 60% du jeu d'annotation. Si on regarde le budget, on perd environ 10% de données (un peu plus de 1000 lignes). 
 
 ```{r}
 sources <- predictions %>%
@@ -149,12 +156,13 @@ sources <- predictions %>%
   summarise(budget = sum(total_budget)) %>%
   mutate(p = budget/sum(budget)) %>%
   mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
-
 ```
 
 
 ```{r}
-#| tab-cap: "Budget renseigné dans les annotations"
+#| tbl-cap: "Budget renseigné dans les annotations"
+#| label: tbl-budget-annotations
+
 gt(sources %>% mutate(n_temp = budget)) %>%
   gt_plt_bar(column = n_temp, keep_column = FALSE) %>%
   fmt_currency(
@@ -170,4 +178,188 @@ gt(sources %>% mutate(n_temp = budget)) %>%
     p = md("_(%)_")
   )
 ```
+
+Maintenant, si on regarde les COICOP, on voit des différences importantes par rapport aux données de caisse ([@tbl-coicop-annotations]). Parmi les différences principales, on remarque que certaines COICOP sont beaucoup moins représentées que dans les données de caisse - par exemple les boissons - alors que d'autres, plus ou moins inexistantes dans les données de caisse, représentent une part important des produits dans notre jeu d'annotation (par exemple l'hôtellerie). On reviendra ultérieurement sur ces différences de champs qui peuvent, en partie, expliquer les (mauvaises) performances du classifieur. 
+
+
+```{r}
+coicop_annotations <- predictions %>% 
+  group_by(coicop = stringr::str_sub(code, 1, 2)) %>%
+  summarise(n = n(), budget = sum(total_budget, na.rm=TRUE)) %>%
+  mutate(p = n/sum(n), p_budget = budget/sum(budget))
+```
+
+
+```{r}
+#| tbl-cap: "Représentativité des données d'annotations par COICOP"
+#| label: tbl-coicop-annotations
+
+gt(
+  coicop_annotations %>%
+    left_join(labels_coicop, by = c("coicop"="coicop1")) %>%
+    select(coicop, label, n, p, budget, p_budget) %>% 
+    mutate(temp_n = n, temp_budget = budget)
+) %>%
+  gt_plt_bar(temp_n, keep_column = FALSE) %>%
+  gt_plt_bar(temp_budget, keep_column = FALSE) %>%
+  grand_summary_rows(
+      columns = c(n, budget),
+      fns = list(label = c("Total"), id = "totals", fn = "sum"),
+      fmt = list(
+        ~fmt_number(., suffixing = TRUE)
+      )
+    ) %>%  
+  grand_summary_rows(
+      columns = c(budget),
+      fns = list(
+        label = c("Nombre de produits concernés"), id="Nombre de produits concernés", fn = ~sum(!is.na(predictions$total_budget))
+      ),
+      fmt = list(
+        ~fmt_number(., sep_mark  = " ", decimals = 0)
+      )
+    ) %>%  
+  fmt_percent(columns = c(p, p_budget)) %>%
+  fmt_currency(budget, currency = "EUR", decimals = 0, incl_space = TRUE, sep_mark = " ") %>%
+  cols_move(columns = temp_n, after=p) %>%
+  cols_label(
+    coicop = "",
+    label = "COICOP",
+    temp_n = "",
+    n = "Nombre de produits",
+    p = md("_Part (%)_"),
+    budget = "Budget total",
+    p_budget = md("_Part (%)_"),
+    temp_budget = ""
+  ) %>%
+  tab_spanner(
+    label = "Produits",
+    columns = c(n, p, temp_n)
+  ) %>%
+  tab_spanner(
+    label = "Budget",
+    columns = c(budget, p_budget, temp_budget)
+  )
+```
+
+
+
+# _Wordcloud_
+
+La @sec-data permettait d'avoir une idée rapide du champ de chacune de nos sources de données. Le modèle de codification automatique utilisant comme données d'apprentissage des libellés textuels, il est nécessaire de vérifier que nos corpus se ressemblent pour que le modèle puisse facilement extrapoler, à partir du vocabulaire entraîné des données de caisse, sur BdF.
+
+
+
+# Performances
+
+```{r}
+library(dplyr)
+library(stringr)
+library(purrr)
+library(tibble)
+
+# Données de départ : perf_ddc
+perf_ddc <- list(
+  ddc_validation_level1 = 0.9597685621344899,
+  ddc_validation_level2 = 0.9497502533018113,
+  ddc_validation_level3 = 0.9347370105053593
+)
+
+# Fonction : comparer les colonnes après découpe par "."
+match_on_dot_level <- function(df, col1, col2, n_points = 2) {
+  # Fonction interne pour tronquer une chaîne à n segments séparés par "."
+  truncate_code <- function(x) {
+    parts <- str_split(x, "\\.", simplify = TRUE)
+    apply(parts, 1, function(row) {
+      paste(row[1:min(n_points, length(row))], collapse = ".")
+    })
+  }
+  
+  left <- truncate_code(df[[col1]])
+  right <- truncate_code(df[[col2]])
+  
+  mean(left == right, na.rm = TRUE)
+}
+
+
+# Générer perf_whole_annotations
+perf_whole_annotations <- map_dbl(1:5, function(n) {
+  match_on_dot_level(predictions, "prediction_0", "code", n_points = n)
+}) %>%
+  set_names(paste0("whole_annotations_level", 1:5))
+
+# Générer perf_annotations_by_method
+perf_annotations_by_method <- predictions %>%
+  group_split(method) %>%
+  map_dfr(function(df_method) {
+    method_name <- unique(df_method$method)
+    map_dfr(1:5, function(n) {
+      tibble(
+        key = paste0(method_name, "_annotations_level", n),
+        value = match_on_dot_level(df_method, "prediction_0", "code", n_points = n)
+      )
+    })
+  }) %>%
+  deframe()
+
+# Fusion des trois listes
+all_dicts <- list(perf_ddc, perf_whole_annotations, perf_annotations_by_method)
+
+# Extraction des infos et transformation en data frame final
+df <- map_dfr(all_dicts, function(d) {
+  imap_dfr(d, function(value, key) {
+    m <- str_match(key, "(.*)_level(\\d+)")
+    if (!is.na(m[1, 1])) {
+      tibble(
+        source = m[1, 2],
+        niveau = paste0("level", m[1, 3]),
+        perf = value
+      )
+    } else {
+      NULL
+    }
+  })
+}) %>%
+  arrange(niveau, source) %>%
+  relocate(perf)
+```
+
+```{r}
+recoding <- c(
+  "ddc_validation" = "Données de validation (DDC)",
+  "whole_annotations" = "Données annotées BdF (ensemble)",
+  "Produits issus de l'application (carnets)_annotations" = "Données annotées BdF (carnets)",
+  "Produits issus de l'application (tickets)_annotations" = "Données annotées BdF (tickets de caisse)",
+  "manual_annotations" = "Annotations manuelles (Copain ou LibreOffice)"
+)
+
+# Appliquer le recodage
+df <- df %>%
+  mutate(
+    source_label = recoding[source],
+    complete = source %in% c("ddc_validation", "whole_annotations"),
+    niveau = as.integer(str_replace(niveau, "level", ""))
+  ) %>%
+  filter(niveau < 4)
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(df, aes(x=niveau, y=perf, color=source_label, linetype=complete)) + geom_line() + geom_point() + scale_linetype_manual(values = c("FALSE" = "dashed", "TRUE" = "solid")) + labs(
+        title="Performance par niveau et source",
+        x="Niveau",
+        y="Performance",
+        color="Source",
+        linetype="Complétude"
+    ) + theme_minimal() + theme(legend_position="bottom")
+
+```
+
+
+# Compréhension du _mismatch_ de champ entre les sources
+
+
+
+
 
