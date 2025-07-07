@@ -105,7 +105,7 @@ gt(stats_coicop_ddc) %>%
 
 ## Annotations
 
-Les annotations sont une collection issue de trois sources. Si on regarde le volume de produits, les tickets océrisés dominent ([@tbl-annotation-source]). Néanmoins, on peut également s'intéresser au budget, pour lequel on perd environ 10% de données (un peu plus de 1000 lignes) qui ont des budgets manquants. Si on regarde le budget, cette fois, les produits renseignés par le biais de l'application dominent largement. 
+Les annotations sont une collection issue de trois sources. Si on regarde le volume de produits, les tickets océrisés dominent ([@tbl-annotation-source]). Néanmoins, on peut également s'intéresser au budget, pour lequel on perd environ 10% de données (un peu plus de 1000 lignes) qui ont des budgets manquants. Si on regarde le budget, cette fois, les produits renseignés par le biais de l'application dominent largement. Ce fichier comporte 530 classes de COICOP différentes.
 
 
 ```{r}
