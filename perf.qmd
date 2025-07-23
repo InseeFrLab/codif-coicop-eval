@@ -28,6 +28,9 @@ Pour cela, nous avons adopté l'approche suivante:
 * Le modèle est entraîné __exclusivement__ sur les données de caisse selon une approche traditionnelle avec un découpage en échantilllon d'entraînement et de validation. 
 * Le jeu d'annotation, dont la nature sera précisée ultérieurement, est utilisé en inférence pour déduire des qualités d'extrapolation sur les données de caisse
 
+::: {.callout-note collapse="false"}
+Les tableaux de résultats pouvant gêner la lecture, les boîtes dans lesquelles ils sont contenus sont rétractables, comme celle-ci.
+:::
 
 # Données utilisées {#sec-data}
 
@@ -37,7 +40,7 @@ Pour pouvoir ultérieurement diagnostiquer les performances de nos modèles sur 
 
 Pour constituer le jeu de données de caisse, nous avons extrait un mois de données de caisse des données de production de l'IPC. Le code ayant permis de constituer celles-ci est sur [{{< fa brands gitlab >}} gitlab.insee.fr/](https://gitlab.insee.fr/ssplab/extraction-ddc) et les données en question sont stockées sur S3 (`s3://travail/projet-ml-classification-bdf/confidentiel/personnel_sensible/data/raw/sample/ddc.parquet`). 
 
-Ce fichier comporte environ 2.9 millions de produits uniques. Cela fait environ 2.3 millions de données dans l'ensemble d'entraînement contre 600 000 dans l'ensemble de validation. Si on regarde le champ de ces données, à savoir la répartition entre les COICOP ([@tbl-coicop-train]), on est peu surpris de retrouver majoritairement de l'alimentaire et des boissons (approx 70% des produits).
+Ce fichier comporte environ __2.9 millions de produits uniques__. Cela fait environ 2.3 millions de données dans l'ensemble d'entraînement contre 600 000 dans l'ensemble de validation. Si on regarde le champ de ces données, à savoir la répartition entre les COICOP ([@tbl-coicop-train]), on est peu surpris de retrouver majoritairement de l'alimentaire et des boissons (approx 70% des produits).
 
 ```{r}
 stats_coicop_ddc <- data.frame(
@@ -74,6 +77,8 @@ stats_coicop_ddc <- stats_coicop_ddc %>% mutate(n_temp = n) %>%
   arrange(coicop1)
 ```
 
+::: {.callout-note collapse="false"}
+## Répartition des COICOP dans le jeu d'apprentissage (nombre de produits)
 
 ```{r}
 #| tbl-cap: Répartition des COICOP dans le jeu d'apprentissage (nombre de produits)
@@ -102,6 +107,7 @@ gt(stats_coicop_ddc) %>%
 
 ```
 
+:::
 
 ## Annotations
 
@@ -134,6 +140,8 @@ sources <- predictions %>%
   mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
 ```
 
+::: {.callout-note collapse="false"}
+## Sources du jeu d'annotation
 
 ```{r}
 #| tbl-cap: "Sources du jeu d'annotation"
@@ -147,7 +155,7 @@ gt(sources %>% mutate(n_temp = n)) %>%
     n_temp = ""
   )
 ```
-
+:::
 
 ```{r}
 sources <- predictions %>%
@@ -158,6 +166,9 @@ sources <- predictions %>%
   mutate(method = if_else(method == "manual", "Annotation humaine (LibreOffice ou Copain)", method))
 ```
 
+
+::: {.callout-note collapse="false"}
+## Budget renseigné dans les annotations
 
 ```{r}
 #| tbl-cap: "Budget renseigné dans les annotations"
@@ -179,6 +190,8 @@ gt(sources %>% mutate(n_temp = budget)) %>%
   )
 ```
 
+:::
+
 Maintenant, si on regarde les COICOP, on voit des différences importantes par rapport aux données de caisse ([@tbl-coicop-annotations]). Parmi les différences principales, on remarque que certaines COICOP sont beaucoup moins représentées que dans les données de caisse - par exemple les boissons - alors que d'autres, plus ou moins inexistantes dans les données de caisse, représentent une part important des produits dans notre jeu d'annotation (par exemple l'hôtellerie). On reviendra ultérieurement sur ces différences de champs qui peuvent, en partie, expliquer les (mauvaises) performances du classifieur. 
 
 
@@ -189,6 +202,8 @@ coicop_annotations <- predictions %>%
   mutate(p = n/sum(n), p_budget = budget/sum(budget))
 ```
 
+::: {.callout-note collapse="false"}
+## Représentativité des données d'annotations par COICOP
 
 ```{r}
 #| tbl-cap: "Représentativité des données d'annotations par COICOP"
@@ -241,13 +256,28 @@ gt(
   )
 ```
 
+:::
 
 
-# _Wordcloud_
+# Les corpus textuels dans notre différentes sources de données
 
-La @sec-data permettait d'avoir une idée rapide du champ de chacune de nos sources de données. Le modèle de codification automatique utilisant comme données d'apprentissage des libellés textuels, il est nécessaire de vérifier que nos corpus se ressemblent pour que le modèle puisse facilement extrapoler, à partir du vocabulaire entraîné des données de caisse, sur BdF.
+La @sec-data permettait d'avoir une idée rapide du champ de chacune de nos sources de données. Le modèle de codification automatique utilisant comme données d'apprentissage des libellés textuels, il est nécessaire de vérifier que nos corpus se ressemblent pour que le modèle puisse facilement extrapoler, à partir du vocabulaire entraîné des données de caisse, sur BdF. 
 
+Pour cela, une approche qu'on peut rapidement mettre en oeuvre est la création de nuages de mots qui permettent de synthétiser l'information textuelle dans nos différents corpus. 
 
+## Données de caisse
+
+Le nettoyage de champs textuels sur les données de caisse consiste principalement à retirer les informations de _packaging_ (poids, volume, nombre d'unités, etc.) du texte. 
+
+::: {#fig-wordcloud-ddc layout-ncol=2}
+
+![Corpus textuel en entrée de l'entraînement du modèle , _i.e._ après nettoyage](./figures/wordcloud/wordcloud_ddc_clean.png){#fig-hanno}
+![Corpus textuel brut des données de caisse, _i.e._ avant nettoyage](./figures/wordcloud/wordcloud_ddc_dirty.png){#fig-surus}
+
+Nuages de mots des données de caisse
+:::
+
+## Données annotées
 
 # Performances
 
