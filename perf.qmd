@@ -19,6 +19,7 @@ dbExecute(con, secret)
 ```
 
 
+
 # Introduction
 
 Cette note vise à synthétiser des éléments relatifs à l'évaluation de la qualité du modèle de codification automatique dans la COICOP entraîné à partir des données de caisse de l'IPC. Il s'agit de tirer des conclusions de la première phase de travaux afin d'évaluer la pertinence de la mise en oeuvre d'une stratégie raffinée d'entraînement et d'inférence. 
@@ -259,7 +260,7 @@ gt(
 :::
 
 
-# Les corpus textuels dans notre différentes sources de données
+# Les corpus textuels dans nos différentes sources de données
 
 La @sec-data permettait d'avoir une idée rapide du champ de chacune de nos sources de données. Le modèle de codification automatique utilisant comme données d'apprentissage des libellés textuels, il est nécessaire de vérifier que nos corpus se ressemblent pour que le modèle puisse facilement extrapoler, à partir du vocabulaire entraîné des données de caisse, sur BdF. 
 
@@ -267,17 +268,55 @@ Pour cela, une approche qu'on peut rapidement mettre en oeuvre est la création 
 
 ## Données de caisse
 
-Le nettoyage de champs textuels sur les données de caisse consiste principalement à retirer les informations de _packaging_ (poids, volume, nombre d'unités, etc.) du texte. 
+Le nettoyage de champs textuels sur les données de caisse consiste principalement à retirer les informations de _packaging_ (poids, volume, nombre d'unités, etc.) du texte. Certaines abbréviations restent fréquentes - par exemple _"bte"_ pour bouteille  - tout comme des infos de poids ou volume qui persistent (_"cl"_, _"gr"_) mais le nuage est quand même plus lisible qu'à l'origine, ce qui suggère une réduction minimale du bruit dans les textes.
+
+:::: {.callout-note collapse="fasls"}
+## Nuages de mots des données de caisse (avant et après nettoyage)
 
 ::: {#fig-wordcloud-ddc layout-ncol=2}
 
-![Corpus textuel en entrée de l'entraînement du modèle , _i.e._ après nettoyage](./figures/wordcloud/wordcloud_ddc_clean.png){#fig-hanno}
-![Corpus textuel brut des données de caisse, _i.e._ avant nettoyage](./figures/wordcloud/wordcloud_ddc_dirty.png){#fig-surus}
+![Corpus textuel en entrée de l'entraînement du modèle , _i.e._ après nettoyage](/figures/wordcloud/wordcloud_ddc_clean.png){#fig-wordcloud-ddc-clean}
+
+![Corpus textuel brut des données de caisse, _i.e._ avant nettoyage](/figures/wordcloud/wordcloud_ddc_dirty.png){#fig-wordcloud-ddc-dirty}
 
 Nuages de mots des données de caisse
 :::
 
+::::
+
 ## Données annotées
+
+Les données annotées proposent un corpus beaucoup plus proche du langage naturel. On y remarque la présence de labels non alimentaires (par exemple _"assurance"_) qui poseront forcément problème au moment de la transposition du modèle entraîné sur données de caisse où ce type de texte n'existe pas.
+
+:::: {.callout-note collapse="false"}
+## Nuage de mot des données annotées (ensemble)
+
+![Nuage de mot des données annotées (ensemble)](/figures/wordcloud/wordcloud_annotations.png)
+
+::::
+
+Maintenant, on peut regarder de manière un peu plus détaillée la nature de nos corpus en fonction de la source d'annotation. Pour rappel, la constitution du jeu d'annotation est disponible dans les tableaux @tbl-annotation-source et @tbl-budget-annotations. 
+
+Comme on pouvait s'y attendre, les données de ticket de caisse sont celles qui ressemblent le plus aux données de caisse. On y retrouve des abbréviations proches et des informations de quantité. Là également le nettoyage textuel aurait pu être quelque peu poussé pour réduire le bruit dans le corpus. E
+
+En revanche les deux autres sources ressemblent beaucoup plus à du langage naturel. Les deux remontées d'information en question - carnets  papiers et suggestions de produits dans l'application - semblent peu différer.
+
+:::: {.callout-note}
+## Nuages de mots des données d'annotation
+
+::: {#fig-wordcloud-annotations-details layout-ncol=2}
+
+![Annotations issues d'un processus manuel (via libreoffice ou copain)](./figures/wordcloud/wordcloud_annotations_annotations_manuelles.png){#fig-wordcloud-annotations-manual}
+
+![Annotations issues des suggestions de l'application](./figures/wordcloud/wordcloud_annotations_application_menu_deroulant.png){#fig-wordcloud-annotations_auto}
+
+![Annotations issues des tickets de caisse](./figures/wordcloud/wordcloud_annotations_tickets.png){#fig-wordcloud-annotations-manual fig-align="center"}
+
+
+Nuages de mots des données d'annotation
+:::
+
+::::
 
 # Performances
 
@@ -373,23 +412,43 @@ df <- df %>%
 ```
 
 
+Rentrons maintenant dans le vif du sujet, à savoir la qualité prédictive du modèle entraîné sur données de caisse. Pour commencer, on regarder, sans détail, la qualité prédictive  sur données d'annotation et la comparer à celle sur l'échantillon de validation des données de caisse. 
+
 ```{r}
 library(ggplot2)
 
-ggplot(df, aes(x=niveau, y=perf, color=source_label, linetype=complete)) + geom_line() + geom_point() + scale_linetype_manual(values = c("FALSE" = "dashed", "TRUE" = "solid")) + labs(
+ggplot(df %>% filter(source %in% c("ddc_validation", "whole_annotations")), aes(x=niveau, y=perf, color=source_label, linetype=complete)) +
+  geom_line() +
+  geom_point()
+```
+
+```{r}
+#| output: false
+
+p <- ggplot(df, aes(x=niveau, y=perf, color=source_label, linetype=complete)) +
+      geom_line() +
+      geom_point() +
+      scale_linetype_manual(values = c("FALSE" = "dashed", "TRUE" = "solid")) +
+      labs(
         title="Performance par niveau et source",
         x="Niveau",
         y="Performance",
         color="Source",
         linetype="Complétude"
-    ) + theme_minimal() + theme(legend_position="bottom")
+    ) + theme_minimal() + theme(legend.position="bottom")
 
 ```
 
+```{r}
+p
+```
 
 # Compréhension du _mismatch_ de champ entre les sources
 
+Deux sources potentielle, déjà détaillées:
 
 
+1. Pas le même champ
+2. Pas le même corpus
 
 
